@@ -1,0 +1,138 @@
+---
+name: fanqie-novel-auto
+description: 番茄小说自动创作与发布 — 多agent orchestrator流水线（写→评→改）、番茄后台发布、config.env配置。触发词：番茄/番茄小说/fanqie/番茄作家后台/番茄作者/番茄发布/番茄上传/番茄投稿/自动写小说/番茄签到/番茄全勤/番茄签约/番茄审核/番茄数据。
+related_skills: [novel-outline-discipline]
+---
+
+# 番茄小说自动化写作与发布
+
+## 何时使用
+
+当用户提到番茄小说自动创作、AI写小说、番茄发布章节、番茄后台API、番茄全勤、番茄签约、番茄投稿、自动写小说等需求时，使用本技能。
+
+## 项目结构
+
+```
+fanqie-novel-writer/          ← Engine (公开, tracked in git)
+├── references/prompts/    # Agent 提示词模板
+│   ├── orchestrator.md
+│   ├── writer-agent.md
+│   ├── evaluator-agent.md
+│   └── rewriter-agent.md
+├── scripts/               # 共享脚本（所有书共用）
+│   ├── gen_writer_goal.py           # 从config.env生成Writer Agent goal
+│   ├── update_outline_status.py     # 自动更新outline状态
+│   ├── evaluate_chapter.sh          # 准备评价素材
+│   └── publish_fanqie.py            # 番茄发布脚本
+├── templates/             # 模板和指南
+│   ├── init.sh            # 新书初始化脚本
+│   └── publish_guide.md   # 发布指南
+└── README.md
+
+novels/                  ← Novel Data (私有, gitignored)
+└── bookN_<slug>/
+    ├── config.env       # 含 Cookie，绝不上 git
+    ├── outline.md
+    ├── characters.md
+    └── chapters/
+```
+
+- Engine 层是通用代码，可以公开到 GitHub
+- Novels 层是用户的私人创作数据，`.gitignore` 忽略整个 `novels/`
+- 每个 book 目录通过 `cd` 进入后运行脚本，不依赖绝对路径
+- 新建小说: `bash templates/init.sh "书名" "类型" "主角名" "性别"`
+
+## 字数标准（番茄平台）
+
+- **单章目标**: 2000-3500 字，目标 2500 字
+- **config.env**: `MIN_WORDS=2000`, `MAX_WORDS=3500`, `CHAPTER_WORDS_TARGET=2500`
+- **统计方法**: Python正则 `re.findall(r'[\u4e00-\u9fff]', content)` 统计纯中文字符
+- **严禁AI估算字数**（偏差可达50%+）
+
+## 多Agent Orchestrator 流水线（核心流程）
+
+**流程**: 一个 orchestrator agent 串行调度三个专业 agent——Writer（写）→ Evaluator（评）→ Rewriter（改），完成"写一章→评价→不达标重写→继续下一章"。
+
+**步骤**:
+```
+1. python3 scripts/gen_writer_goal.py <book_dir> <chapter_num>
+   → 从config.env读取字数配置，生成Writer Agent goal模板
+
+2. delegate_task → Writer Agent
+   → 传入精简上下文：上一章完整内容 + 最近2章开头各200字 + 大纲片段 + 角色设定前500字
+   → 产出: chapters/chNNN_第N章 标题.md
+
+3. python3 scripts/update_outline_status.py <chapter_num> <book_dir>
+   → 将outline.md中该章标记为 ✅已完成
+
+4. bash scripts/evaluate_chapter.sh <chapter_num>
+   → 生成 .eval_material_NNN.md 评价素材
+
+5. delegate_task → Evaluator Agent
+   → 读取 .eval_material_NNN.md，输出JSON评分
+   → 7维度：大纲对齐度(30%)、字数达标(15%)、人物一致性(20%)、开篇钩子(10%)、结尾钩子(10%)、爽点密度(15%)、连贯性(10%)
+
+6. 判定: weighted_total >= EVAL_THRESHOLD(7)?
+   → YES → 继续下一章
+   → NO  → delegate_task → Rewriter Agent（带反馈重写，最多EVAL_MAX_RETRIES=2次）
+           → 回到步骤3（重新评价）
+```
+
+**评分JSON格式**:
+```json
+{
+  "scores": [d1, d2, d3, d4, d5, d6, d7],
+  "weights": [0.30, 0.15, 0.20, 0.10, 0.10, 0.15, 0.10],
+  "weighted_total": X.X,
+  "pass": true/false,
+  "suggestion": "具体问题和建议",
+  "detail": { "dimension_1": "...", ... }
+}
+```
+
+**错误处理**:
+- Writer产出文件不存在 → 重试1次
+- 重试MAX_RETRIES次仍不达标 → 标记"待人工审核"，继续下一章
+- 任何agent调用失败 → 记录错误，跳过该章
+
+## 发布流程（三步）
+
+1. **new_article**: POST 创建章节草稿 → 返回 item_id
+2. **cover_article**: POST 存草稿（带 volume_id, volume_name）
+3. **publish_article**: POST 确认发布（publish_status=1）
+
+publish_fanqie.py 已实现完整三步流程，自动从章节文件名提取章节号，内置指数退避重试（3次）。
+
+## config.env 关键字段
+
+```
+NOVEL_TITLE="书名"
+GENRE="类型"
+PROTAGONIST_NAME="主角名"
+MIN_WORDS=2000
+MAX_WORDS=3500
+CHAPTER_WORDS_TARGET=2500
+EVAL_THRESHOLD=7
+EVAL_MAX_RETRIES=2
+TOMATO_COOKIE="..."
+BOOK_ID=""
+CURRENT_VOLUME_ID=""
+CURRENT_VOLUME_NAME=""
+```
+
+## Pitfalls
+
+- **脚本统一在根目录**: 所有共享脚本（gen_writer_goal.py, update_outline_status.py, evaluate_chapter.sh, publish_fanqie.py）放在根 `scripts/`，每本书通过 CWD 调用。不要在各书目录下放副本。
+- **SCRIPT_DIR 陷阱**: 脚本从 `book/scripts/` 移到 `root/scripts/` 后，`$(dirname "$0")/..` 会指向错误目录。改用 `$PWD`（CWD）读取 config.env。
+- **脚本精简**: 每本书 scripts/ 下只保留 3 个文件。write_chapter.sh（废弃）、publish_chapter.sh（无人引用）、publish_fanqie.py（冗余）全部删除。
+- **字数硬编码**: delegate_task 的 goal 中字数必须从 config.env 动态读取，不能写死
+- **bash→Python传参**: 用 export + os.environ 传中文参数，不要用 heredoc 内嵌字符串插值
+- **outline状态**: 写完必须用 update_outline_status.py 更新，否则 publish 时不知道哪些已写完
+- **连贯性检查**: Evaluator 新增第7维度"连贯性"，检查与前文矛盾、角色状态一致性、重复事件
+- **不要跨书引用**: 每本书的 prompt 只能引用本书内容，禁止提到其他书
+- **publish_article不需要title**: 但 new_article 和 cover_article 需要 title 参数
+
+## Related Files
+
+- `templates/init.sh` — 新书初始化脚本
+- `templates/publish_guide.md` — 发布指南

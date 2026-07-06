@@ -1,0 +1,10 @@
+# Novel data (private, not tracked in git)
+novels/
+
+# Config with sensitive data (cookie/token)
+# Uncomment if you want to track config.env but ignore cookies
+# novels/*/config.env
+
+# OS
+.DS_Store
+Thumbs.db
