@@ -1,12 +1,13 @@
 # Fanqie-Novel-Writer: AI-Powered Tomato Novel Writing Pipeline
 
-An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) (番茄小说), using a multi-agent orchestrator to write, evaluate, and rewrite chapters with quality gates.
+An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) (番茄小说), using a multi-agent orchestrator to write, evaluate, de-AI, and rewrite chapters with quality gates.
 
 ## Why This Project
 
 | Feature | Traditional AI Writing | This Project |
 |---------|----------------------|-----------------------------|
 | Quality Gate | Discover drift after writing | Auto-score every chapter, auto-rewrite if below threshold |
+| AI Trace Detection | Hidden AI patterns, easy to reject | De-AI step after every chapter, 6-dimension evaluation |
 | Context Window | Read all history (54KB+) | Last chapter + 2 summaries (~10KB) |
 | Word Count | AI estimates off by 50%+ | Python regex exact count, dynamic config.env |
 | Outline Alignment | Drifts after a few chapters | 30% score weight on outline adherence, post-volume correction |
@@ -19,10 +20,10 @@ An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) 
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│  Writer     │────▶│  Evaluator   │────▶│  Pass?      │────▶│  Next Chapter│
-│  Agent      │     │  Agent       │     │  (≥7/10)    │     │              │
-│  (write)    │◀────│  (score)     │     │             │     └──────────────┘
-└─────────────┘     └──────────────┘     └─────────────┘
+│  Writer     │────▶│  Evaluator   │────▶│  Pass?      │────▶│  De-AI       │
+│  Agent      │     │  Agent       │     │  (≥7/10)    │     │  Agent       │
+│  (write)    │◀────│  (score)     │     │             │     │  (de-AI)     │
+└─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
        ▲                     │                   │
        │                     ▼                   │
        │              ┌──────────────┐           │
@@ -31,12 +32,13 @@ An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) 
                       │  (rewrite)   │           │
                       └──────────────┘           │
                                                  │
-                                    (fail < 7/10, retry ≤2x)
+                                   (fail < 7/10, retry ≤2x)
 ```
 
 **Key design principles:**
 - One chapter per run — strict outline alignment, stable quality
 - Quality gate before moving on — evaluate on 7 dimensions, auto-rewrite if below threshold
+- **De-AI after every chapter** — eliminate AI traces immediately, not at sign-off
 - Dynamic configuration — word counts, thresholds all from `config.env`, never hardcoded
 - Token-efficient — Writer Agent receives only last chapter + 2 chapter summaries (~10KB vs ~54KB)
 
@@ -57,8 +59,8 @@ hermes skills install skills/novel-outline-discipline
 ### Complete Workflow
 
 ```
-1. Init ──→ 2. AI writes outline ──→ 3. AI writes characters ──→ 4. Write chapters ──→ 5. Publish
-   init.sh       outline.md            characters.md              orchestrator         publish_fanqie.py
+1. Init ──→ 2. AI writes outline ──→ 3. AI writes characters ──→ 4. Write chapters ──→ 5. Sign-off ──→ 6. Publish
+   init.sh       outline.md            characters.md              orchestrator       at 20k words    publish_fanqie.py
 ```
 
 #### Step 1: Initialize a new novel
@@ -87,11 +89,15 @@ See `templates/publish_guide.md` for detailed instructions.
 
 #### Step 4: Write chapters
 
-Each chapter auto-executes: Writer → Evaluator → (Rewriter if needed) → Next chapter
+Each chapter auto-executes: Writer → Evaluator → De-AI → (Rewriter if needed) → Next chapter
 
 See `references/prompts/orchestrator.md` for details.
 
-#### Step 5: Publish
+#### Step 5: Sign-off assessment (at ~20k words)
+
+When word count reaches `SIGN_WORDS` (default 20,000), the orchestrator triggers a sign-off assessment on the entire manuscript.
+
+#### Step 6: Publish
 
 After finishing the first volume (30 chapters), refer to `templates/publish_guide.md`.
 
@@ -107,20 +113,22 @@ fanqie-novel-writer/
 │       ├── outline.md          # Chapter-by-chapter outline
 │       ├── characters.md       # Character profiles
 │       ├── chapters/           # Generated chapter files
-│   └── scripts/
-│           ├── gen_writer_goal.py           # Generate Writer Agent goal from config
-│           ├── update_outline_status.py     # Auto-update outline status markers
-│           └── evaluate_chapter.sh          # Prepare evaluation material
+│       ├── .deai_report_NNN.md # De-AI reports (per chapter)
 ├── references/prompts/
 │   ├── orchestrator.md      # Orchestrator scheduling logic
-│   ├── writer-agent.md      # Writer Agent prompt template
+│   ├── writer-agent.md      # Writer Agent prompt template (with de-AI rules)
 │   ├── evaluator-agent.md   # Evaluator Agent prompt template (7 dimensions)
-│   └── rewriter-agent.md    # Rewriter Agent prompt template
-├── scripts/                           # Public scripts (CWD-based)
+│   ├── rewriter-agent.md    # Rewriter Agent prompt template
+│   ├── de-ai-agent.md       # De-AI Agent prompt template
+│   └── sign-assessment-agent.md  # Sign-off assessment prompt (6 dimensions)
+├── scripts/                           # Shared scripts (CWD-based)
 │   ├── gen_writer_goal.py            # Generate Writer Agent goal from config
 │   ├── update_outline_status.py      # Auto-update outline status markers
 │   ├── evaluate_chapter.sh           # Prepare evaluation material
-│   └── publish_fanqie.py             # Chapter publishing script (API 3-step flow)
+│   ├── de_ai_rewrite.sh              # Prepare de-AI material
+│   ├── assess_sign_off.sh            # Prepare sign-off assessment material
+│   ├── publish_fanqie.py             # Chapter publishing script (API 3-step flow)
+│   └── fix_word_counts.py            # Batch fix word count annotations
 ├── templates/
 │   ├── init.sh
 │   └── publish_guide.md
@@ -153,13 +161,16 @@ python3 ../../scripts/update_outline_status.py 10 .
 # Step 4: Evaluate
 bash ../../scripts/evaluate_chapter.sh 10
 
-# Step 5: Publish (if passes)
+# Step 5: De-AI (after evaluation passes)
+bash ../../scripts/de_ai_rewrite.sh 10
+
+# Step 6: Publish (if passes)
 python3 ../../scripts/publish_fanqie.py chapters/ch010_*.md
 ```
 
 ### 4. Automated Pipeline (Cron Job)
 
-The recommended approach is to use the orchestrator as a cron job, which triggers the full Write→Evaluate→Rewrite cycle:
+The recommended approach is to use the orchestrator as a cron job, which triggers the full Write→Evaluate→De-AI→Rewrite cycle:
 
 ```
 cronjob (triggered daily)
@@ -167,6 +178,7 @@ cronjob (triggered daily)
   → Spawns Writer Agent (delegate_task)
   → Runs evaluate_chapter.sh
   → Spawns Evaluator Agent (delegate_task)
+  → If pass: runs de_ai_rewrite.sh + spawns De-AI Agent
   → If fail: spawns Rewriter Agent (delegate_task)
   → Continues to next chapter
 ```
@@ -185,6 +197,7 @@ See `references/prompts/orchestrator.md` for the full orchestration logic.
 | `MIN_WORDS` | Minimum chapter word count | `2000` |
 | `MAX_WORDS` | Maximum chapter word count | `3500` |
 | `CHAPTER_WORDS_TARGET` | Target word count | `2500` |
+| `SIGN_WORDS` | Sign-off word threshold | `20000` |
 | `EVAL_THRESHOLD` | Evaluation pass threshold | `7` |
 | `EVAL_MAX_RETRIES` | Max rewrite attempts | `2` |
 | `TOMATO_COOKIE` | Tomato Novel API cookie | `...` |
@@ -215,6 +228,44 @@ Chapters are scored on 7 dimensions (1-10 each), weighted:
 
 **Pass threshold:** Weighted total ≥ 7/10. Below threshold → auto-rewrite with feedback (up to `EVAL_MAX_RETRIES` times).
 
+## De-AI Traces Removal
+
+After every chapter passes evaluation, a De-AI agent runs to eliminate AI-generated patterns.
+
+### What gets removed:
+- Template openings ("XX opened eyes, white ceiling appeared before him")
+- Universal clichés ("warmth surged in his heart", "took a deep breath")
+- Emotion dumping (saying "he was angry" instead of showing it)
+- Uniform dialogue style (all characters sound the same)
+- Empty scene descriptions (only visual, no sensory details)
+- Repetitive sentence structures
+- Formulaic chapter endings
+
+### How it works:
+1. `de_ai_rewrite.sh` aggregates the chapter + recent chapters
+2. De-AI Agent reads `de-ai-agent.md` prompt template
+3. Agent modifies the chapter file in-place
+4. De-AI report saved to `.deai_report_NNN.md` (separate from chapter)
+5. Score must be ≥ 7/10 to pass
+
+### Writer Agent de-AI rules
+The Writer Agent itself is trained to write naturally — no AI clichés, no template openings, emotion shown through action not adjectives. This reduces the De-AI workload significantly.
+
+## Sign-off Assessment (at ~20k words)
+
+When word count reaches `SIGN_WORDS` (default 20,000), a comprehensive assessment runs:
+
+| Dimension | Weight | Description |
+|-----------|--------|-------------|
+| 开篇质量 | 25% | First 3 chapters hook quality |
+| 主线清晰度 | 20% | Story line clarity |
+| 爽点密度 | 15% | Satisfaction moment density |
+| 人物辨识度 | 10% | Character memorability |
+| 文笔自然度 | 15% | Natural writing style |
+| AI痕迹检测 | 15% | AI trace detection |
+
+**Pass threshold:** Weighted total ≥ 7.5/10. AI trace score < 5.0 → must rewrite heavily.
+
 ## Publishing
 
 Three-step API flow via `publish_fanqie.py`:
@@ -236,9 +287,11 @@ cd novels/bookN && python3 ../../scripts/publish_fanqie.py chapters/ch001_*.md
 | Agent | Responsibility | Prompt Template |
 |-------|---------------|-----------------|
 | **Orchestrator** | Flow control only — spawns other agents, checks results | `orchestrator.md` |
-| **Writer** | Writes one chapter based on outline + context | `writer-agent.md` |
+| **Writer** | Writes one chapter based on outline + context, applies de-AI rules | `writer-agent.md` |
 | **Evaluator** | Scores chapter on 7 dimensions, outputs JSON | `evaluator-agent.md` |
-| **Rewriter** | Rewrites chapter with evaluation feedback | `rewriter-agent.md` |
+| **Rewriter** | Rewrites chapter with evaluation feedback, applies de-AI rules | `rewriter-agent.md` |
+| **De-AI** | Removes AI traces from polished chapter | `de-ai-agent.md` |
+| **Sign-off Evaluator** | Full manuscript assessment at 20k words | `sign-assessment-agent.md` |
 
 ### Context Optimization
 
@@ -259,6 +312,8 @@ This replaces the old approach of reading all previous chapters (~54KB) with jus
 - **AI word count lies:** AI estimates can be off by 50%+. Always use Python regex after writing.
 - **Outline drift:** AI may deviate from outline. Always verify outline alignment before writing.
 - **Template endings:** Ban generic closing phrases like "充满了信心" or "才刚刚开始". Each ending must have a specific plot hook.
+- **De-AI report is separate:** Reports go to `.deai_report_NNN.md`, chapter files stay clean.
+- **Temporary files:** `.eval_*.md`, `.deai_material_*.md`, `.sign_assess.md` are gitignored.
 
 ## Requirements
 

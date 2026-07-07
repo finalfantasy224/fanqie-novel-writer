@@ -19,10 +19,10 @@
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│  Writer     │────▶│  Evaluator   │────▶│  通过?      │────▶│  下一章       │
-│  Agent      │     │  Agent       │     │  (≥7/10)    │     │              │
-│  (写作)     │◀────│  (评分)      │     │             │     └──────────────┘
-└─────────────┘     └──────────────┘     └─────────────┘
+│  Writer     │────▶│  Evaluator   │────▶│  通过?      │────▶│  De-AI       │
+│  Agent      │     │  Agent       │     │  (≥7/10)    │     │  Agent       │
+│  (写作)     │◀────│  (评分)      │     │             │     │  (去AI痕迹)  │
+└─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
        ▲                     │                   │
        │                     ▼                   │
        │              ┌──────────────┐           │
@@ -37,6 +37,7 @@
 **设计理念：**
 - 每次只写一章 —— 严格对齐大纲，质量稳定
 - 写完即评 —— 7维度评分，不达标自动重写
+- **每章必做去AI痕迹** —— 不等到签约时才处理
 - 配置动态化 —— 字数、阈值全部来自 `config.env`，绝不硬编码
 - 上下文精简 —— Writer Agent 只接收上一章+最近2章摘要（约10KB，而非54KB）
 
@@ -107,17 +108,23 @@ fanqie-novel-writer/
 │       ├── config.env              # 书籍配置
 │       ├── outline.md              # 大纲
 │       ├── characters.md           # 角色设定
-│       └── chapters/               # 章节文件
+│       ├── chapters/               # 章节文件
+│       └── .deai_report_NNN.md     # 去AI痕迹报告（每章一个）
 ├── references/prompts/             # Agent 提示词模板
 │   ├── orchestrator.md             # 调度逻辑
-│   ├── writer-agent.md             # 写作模板
+│   ├── writer-agent.md             # 写作模板（含去AI规则）
 │   ├── evaluator-agent.md          # 评分模板（7维度）
-│   └── rewriter-agent.md           # 重写模板
+│   ├── rewriter-agent.md           # 重写模板
+│   ├── de-ai-agent.md            # 去AI痕迹模板
+│   └── sign-assessment-agent.md  # 签约评估模板（6维度）
 ├── scripts/                           # 公共脚本（每本书通过 CWD 引用）
 │   ├── gen_writer_goal.py            # 动态生成Writer Agent目标
 │   ├── update_outline_status.py      # 自动更新大纲状态
 │   ├── evaluate_chapter.sh           # 准备评价素材
-│   └── publish_fanqie.py             # 章节发布脚本
+│   ├── de_ai_rewrite.sh              # 准备去AI素材
+│   ├── assess_sign_off.sh            # 准备签约评估素材
+│   ├── publish_fanqie.py             # 章节发布脚本
+│   └── fix_word_counts.py            # 批量修复字数标注
 ├── templates/                      # 模板和指南
 │   ├── init.sh                     # 新书初始化脚本
 │   └── publish_guide.md            # 发布指南
@@ -226,9 +233,11 @@ cd novels/bookN && python3 scripts/publish_fanqie.py chapters/ch001_*.md
 | Agent | 职责 | 提示词模板 |
 |-------|------|-----------|
 | **Orchestrator** | 流程控制 — 调度其他 Agent，检查结果 | `orchestrator.md` |
-| **Writer** | 根据大纲和上下文撰写单章 | `writer-agent.md` |
+| **Writer** | 根据大纲和上下文撰写单章（含去AI规则） | `writer-agent.md` |
 | **Evaluator** | 7维度评分，输出 JSON | `evaluator-agent.md` |
-| **Rewriter** | 根据评分反馈重写章节 | `rewriter-agent.md` |
+| **Rewriter** | 根据评分反馈重写章节（含去AI规则） | `rewriter-agent.md` |
+| **De-AI** | 消除章节中的AI痕迹 | `de-ai-agent.md` |
+| **签约评估** | 2万字时评估全书是否符合签约标准 | `sign-assessment-agent.md` |
 
 ### 上下文优化
 
@@ -248,7 +257,9 @@ Writer Agent 接收**最小上下文窗口**：
 - **bash→Python 传参**：用 `export VAR=value` + `os.environ['VAR']`，不要用 heredoc 内嵌字符串
 - **AI 字数造假**：AI 估算偏差可达50%+，写完后必须用 Python 重新统计
 - **大纲漂移**：AI 可能偏离大纲，写作前必须校验大纲区间
-- **模板化结尾**：禁止反复使用"充满了信心""才刚刚开始"等空洞结尾，每章结尾必须有具体剧情钩子
+- **模板化结尾**：禁用"充满了信心"、"才刚刚开始"等套话，每章结尾必须有具体剧情钩子
+- **去AI报告分离**：报告保存在 `.deai_report_NNN.md`，章节文件保持干净
+- **临时文件**：`.eval_*.md`、`.deai_material_*.md`、`.sign_assess.md` 已被 gitignore
 
 ## 环境要求
 
