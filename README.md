@@ -48,7 +48,7 @@ An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) 
 
 ```bash
 # Clone the project
-git clone https://github.com/yourusername/fanqie-novel-writer.git
+git clone https://github.com/finalfantasy224/fanqie-novel-writer.git
 cd fanqie-novel-writer
 
 # Install skills (so AI knows how to use this project)

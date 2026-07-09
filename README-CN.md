@@ -47,7 +47,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourusername/fanqie-novel-writer.git
+git clone https://github.com/finalfantasy224/fanqie-novel-writer.git
 cd fanqie-novel-writer
 
 # 安装技能（让 AI 知道如何使用本项目）
