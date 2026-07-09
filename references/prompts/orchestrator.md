@@ -22,7 +22,7 @@
 ### 步骤1：检测下一章
 检查 chapters/ 目录中最大的章节号，下一章 = 最大号 + 1
 如果下一章 > {VOLUME_END} → 卷已完结，跳到"卷完结流程"
-如果当前总字数已达到 {SIGN_WORDS} 且尚未进行签约评估 → 跳到"步骤10：签约评估"
+如果当前总字数已达到 {SIGN_WORDS} 且尚未进行签约评估 → 跳到"步骤11：签约评估"
 
 ### 步骤2：准备 Writer Agent 上下文（关键优化）
 **不要**让 Writer Agent 自己读取所有章节文件。orchestrator 应该：
@@ -52,11 +52,11 @@
 - delegate_task 给 Evaluator Agent，goal="评价章节质量"
 - 解析返回的 JSON 评分结果
 
-|### 步骤7：判定
-|- 如果 pass=true → 进入步骤7.5（去AI痕迹润色）
-|- 如果 pass=false → 跳到步骤8
+### 步骤7：判定
+- 如果 pass=true → 进入步骤8（去AI痕迹润色）
+- 如果 pass=false → 跳到步骤9
 
-### 步骤7.5：去AI痕迹润色（每章必做）
+### 步骤8：去AI痕迹润色（每章必做）
 **每章评价通过后立即润色，不等2万字。** 保证前3章就没有AI痕迹：
 1. 运行 `bash scripts/de_ai_rewrite.sh {CHAPTER_NUM}`
    生成 `.deai_material_{PADDED}.md` 去AI润色素材
@@ -68,7 +68,7 @@
    - 读取元数据文件，确认去AI痕迹得分 >= 7
 5. 跳转到"继续下一章"
 
-### 步骤8：spawn Rewriter Agent（如果需要）
+### 步骤9：spawn Rewriter Agent（如果需要）
 - 检查重试计数器，如果 >= {MAX_RETRIES} → 标记"待人工审核"，跳到"继续下一章"
 - 读取 references/prompts/rewriter-agent.md 作为模板
 - 填入原章节文件、评分JSON、改进建议、重试次数
@@ -76,12 +76,12 @@
 - 验证文件已更新
 - 回到步骤4（更新outline）→ 步骤5（重新评价）
 
-### 步骤9：继续下一章
+### 步骤10：继续下一章
 - CHAPTER_NUM += 1
 - 如果 CHAPTER_NUM <= {VOLUME_END} → 回到步骤2
 - 如果 CHAPTER_NUM > {VOLUME_END} → 卷完结
 
-### 步骤10：签约评估（新增）
+### 步骤11：签约评估（新增）
 在卷内写到第{SIGN_WORDS}章（约2万字）时，触发签约评估：
 1. 运行 `bash scripts/assess_sign_off.sh`
    生成 `.sign_assess.md` 签约评估素材文件
@@ -95,7 +95,7 @@
    - 如果 "AI痕迹检测" < 5.0 → 必须大幅改写，降低AI感后再提交
 5. 签约评估结果记录到 outline.md 的"已更新章节记录"表中
 
-### 步骤11：卷完结流程
+### 步骤12：卷完结流程
 1. 输出卷完结报告（章节总数、达标率、平均评分、待人工审核章节）
 2. 标记所有章节为"已评价"状态
 3. 结束流水线

@@ -105,21 +105,7 @@
 ```
 
 ### 字数统计（写完后执行）
-python3 -c "
-import re, glob, os
-files = glob.glob('chapters/ch{PADDED_NUM}_第{CHAPTER_NUM}章*.md')
-with open(files[0], 'r', encoding='utf-8') as f:
-    content = f.read()
-lines = [l for l in content.split('\n') if not l.startswith('【')]
-text = '\n'.join(lines)
-chinese = len(re.findall(r'[\u4e00-\u9fff]', text))
-old = '【本章字数：XXX字】'
-new = f'【本章字数：{chinese}字】'
-content = content.replace(old, new)
-with open(files[0], 'w', encoding='utf-8') as f:
-    f.write(content)
-print(f'字数: {chinese}')
-"
+python3 ../../scripts/count_and_update.py chapters/ch{PADDED_NUM}_第{CHAPTER_NUM}章*.md
 
 ### 注意事项
 - 文件名严格使用 chNNN_第N章 标题.md 格式
@@ -128,3 +114,4 @@ print(f'字数: {chinese}')
 - 禁止概括式叙述，每个事件必须展开为具体场景
 - **不要自行读取其他章节文件** — 上下文由 orchestrator 提供
 - **去AI痕迹规则是最高优先级** — 写出来的章节要直接像真人作者写的，减少后续润色工作量
+- **只写本章大纲要求的事件，不要提前写后续章节的剧情**

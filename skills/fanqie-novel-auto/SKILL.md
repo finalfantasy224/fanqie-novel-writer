@@ -124,7 +124,7 @@ CURRENT_VOLUME_NAME=""
 
 - **脚本统一在根目录**: 所有共享脚本（gen_writer_goal.py, update_outline_status.py, evaluate_chapter.sh, publish_fanqie.py）放在根 `scripts/`，每本书通过 CWD 调用。不要在各书目录下放副本。
 - **SCRIPT_DIR 陷阱**: 脚本从 `book/scripts/` 移到 `root/scripts/` 后，`$(dirname "$0")/..` 会指向错误目录。改用 `$PWD`（CWD）读取 config.env。
-- **脚本精简**: 每本书 scripts/ 下只保留 3 个文件。write_chapter.sh（废弃）、publish_chapter.sh（无人引用）、publish_fanqie.py（冗余）全部删除。
+- **脚本精简**: 每本书 scripts/ 下只保留必要的个人脚本。根目录 scripts/ 下的共享脚本（evaluate_chapter.sh, de_ai_rewrite.sh, assess_sign_off.sh, publish_fanqie.py 等）通过 CWD 调用。不要在各书目录下放副本。
 - **字数硬编码**: delegate_task 的 goal 中字数必须从 config.env 动态读取，不能写死
 - **bash→Python传参**: 用 export + os.environ 传中文参数，不要用 heredoc 内嵌字符串插值
 - **outline状态**: 写完必须用 update_outline_status.py 更新，否则 publish 时不知道哪些已写完

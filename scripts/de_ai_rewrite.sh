@@ -90,7 +90,7 @@ all_chapters = sorted(
     [f for f in os.listdir(chapters_dir) if re.match(r'ch\d+_第\d+章.*\.md$', f)],
     key=lambda x: int(re.search(r'ch(\d+)', x).group(1))
 )
-for fname in reversed(all_chapters[-4:]):
+for fname in reversed(all_chapters[-3:]):
     if fname == os.path.basename(chapter_file):
         continue
     fpath = os.path.join(chapters_dir, fname)

@@ -38,8 +38,8 @@ def main():
     new_lines = []
     
     for line in lines:
-        # 匹配表格行：| 第N章 | ... |
-        table_match = re.match(r'^\|\s*第\s*' + str(chapter_num) + r'\s*章\s*\|', line)
+        # 匹配表格行：| 第N章 | ... | （加 (?!\d) 防止匹配第10章等）
+        table_match = re.match(r'^\|\s*第\s*' + str(chapter_num) + r'\s*章(?!\d)\s*\|', line)
         if table_match:
             # 检查是否已有状态标记
             if '✅' in line or '已完成' in line:

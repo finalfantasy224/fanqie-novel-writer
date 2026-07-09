@@ -57,8 +57,9 @@ def main():
     goal = f"""撰写《{novel_title}》第{chapter_num}章。
 
 ## 文件保存
-保存到: {book_dir}/chapters/ch{padded}_第{chapter_num}章_*.md
-文件名格式: ch{{padded}}_第{{chapter_num}}章 {{标题}}.md
+保存到: {book_dir}/chapters/
+文件名格式: ch{padded}_第{chapter_num}章 {{标题}}.md
+其中 padded = {padded}（三位数补零）
 
 ## 字数要求（从 config.env 读取）
 - 目标字数: {target_words} 字
@@ -86,23 +87,7 @@ def main():
 【下一章预告：XXX】
 
 ## 字数统计（写完后立即执行）
-python3 -c "
-import re, glob, os
-chapters_dir = '{book_dir}/chapters'
-files = glob.glob(os.path.join(chapters_dir, 'ch{padded}_第{chapter_num}章*.md'))
-if files:
-    with open(files[0], 'r', encoding='utf-8') as f:
-        content = f.read()
-    lines = [l for l in content.split('\\n') if not l.startswith('【')]
-    text = '\\n'.join(lines)
-    chinese = len(re.findall(r'[\\u4e00-\\u9fff]', text))
-    old = '【本章字数：XXX字】'
-    new = f'【本章字数：{{chinese}}字】'
-    content = content.replace(old, new)
-    with open(files[0], 'w', encoding='utf-8') as f:
-        f.write(content)
-    print(f'字数: {{chinese}}')
-"
+python3 ../../scripts/count_and_update.py {book_dir}/chapters/ch{padded}_第{chapter_num}章*.md
 """
     
     # 输出到文件

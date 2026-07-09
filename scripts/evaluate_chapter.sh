@@ -93,20 +93,27 @@ with open(chapter_file, 'r', encoding='utf-8') as f:
     chapter_content = f.read()
 word_count = len(re.findall(r'[\u4e00-\u9fff]', chapter_content))
 
-# 读取最近3章
+# 读取最近章节（连贯性参考）
+# 前10章各取500字（快速扫描），最近3章各取2000字（详细检查）
 recent_chaps = []
 all_chapters = sorted(
     [f for f in os.listdir(chapters_dir) if re.match(r'ch\d+_第\d+章.*\.md$', f)],
     key=lambda x: int(re.search(r'ch(\d+)', x).group(1))
 )
-for fname in reversed(all_chapters[-4:]):
-    if fname == os.path.basename(chapter_file):
-        continue
+# 排除当前评价的章节
+other_chapters = [f for f in all_chapters if f != os.path.basename(chapter_file)]
+for i, fname in enumerate(reversed(other_chapters)):
     fpath = os.path.join(chapters_dir, fname)
+    # 最近3章取完整2000字，更早的只取500字
+    read_len = 2000 if i < 3 else 500
     with open(fpath, 'r', encoding='utf-8') as f:
-        content = f.read(3000)
+        content = f.read(read_len)
     title = fname.replace('.md', '').split('_', 1)[1] if '_' in fname else fname
-    recent_chaps.append(f"---\n章节: {title}\n{content}")
+    marker = "[详细]" if i < 3 else "[摘要]"
+    recent_chaps.append(f"{marker} {title}\n{content}\n---")
+    # 最多取10章前文，避免素材过大导致截断
+    if i >= 9:
+        break
 
 # 提取大纲对应章节
 outline_snippet = ""

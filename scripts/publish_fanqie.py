@@ -11,6 +11,7 @@
 """
 import os
 import sys
+import re
 import time
 import json
 import logging
@@ -203,6 +204,12 @@ def parse_chapter_file(filepath):
         # 跳过字数统计标记
         if line.startswith('【本章字数') or line.startswith('【字数统计'):
             continue
+        # 跳过 HTML 标签和 markdown 代码块
+        if line.startswith('<p>') or line.startswith('</p>') or line.startswith('```'):
+            continue
+        # 跳过纯 HTML 标签行
+        if re.match(r'^</?p>$', line):
+            continue
         paragraphs.append(line)
     
     # 合并连续空行为单个段落（防止多余空行）
@@ -354,8 +361,10 @@ def main():
         sys.exit(1)
     
     html_content = '<p>' + '</p><p>'.join(paragraphs) + '</p>'
-    char_count = len(content_body)
-    log.info("标题: %s | 字数: %d | 段落数: %d", title, char_count, len(paragraphs))
+    # 用中文正则统计，与 count_and_update.py 保持一致
+    text_for_count = '\n'.join(l for l in content_body.split('\n') if not l.startswith('【'))
+    char_count = len(re.findall(r'[\u4e00-\u9fff]', text_for_count))
+    log.info("标题: %s | 中文字数: %d | 段落数: %d", title, char_count, len(paragraphs))
     
     # 1. 加载配置
     config = load_config()
@@ -370,8 +379,8 @@ def main():
     log.info("[准备] 获取 CSRF Token...")
     csrf_token = get_csrf_token(cookie)
     if not csrf_token:
-        log.warning("未能自动获取 CSRF Token，尝试使用默认值...")
-        csrf_token = '000100000001c2536c2e208675b8e7d915b2fe564eb8f8072ac8f62e7ea2f4a2d6f1f1f2aeb218be2fba13cb58e0'
+        log.error("未能从 API 获取 CSRF Token。Cookie 可能已过期，请刷新番茄作家后台 Cookie 后重试。")
+        sys.exit(1)
     log.info("CSRF Token: %s...", csrf_token[:20])
     
     # 3. 从文件名解析章节号，用于卷切换

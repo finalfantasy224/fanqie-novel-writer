@@ -15,3 +15,7 @@ Thumbs.db
 .eval_*.json
 .eval_*.md
 .sign_assess.md
+.writer_goal.md
+
+# Historical evaluation artifacts (scattered from early runs)
+eval_ch*.json

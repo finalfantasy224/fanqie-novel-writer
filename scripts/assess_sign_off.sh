@@ -125,7 +125,7 @@ with open(material_file, 'w', encoding='utf-8') as f:
     f.write(f"开篇决定编辑第一印象，以下为核心评估材料：\n\n")
     for c in opening_chapters:
         f.write(f"### 第{c['num']}章 ({c['words']}字)\n")
-        f.write(f"```\n{c['content'][:5000]}\n```\n\n")
+        f.write(f"```\n{c['content'][:8000]}\n```\n\n")
 
     # 最近章节摘要（节奏评估）
     f.write(f"## 最近章节摘要（节奏与质量评估）\n")
@@ -213,9 +213,9 @@ with open(material_file, 'w', encoding='utf-8') as f:
     f.write("}\n")
     f.write("```\n\n")
     f.write(f"## 判定规则\n\n")
-    f.write(f"- weighted_total >= 7.0 且 can_submit_now = true → 建议提交签约\n")
-    f.write(f"- weighted_total < 6.0 → 不建议提交，需重大修改\n")
-    f.write(f"- 6.0 <= weighted_total < 7.0 → 有条件建议提交，需针对性修改\n")
+    f.write(f"- weighted_total >= 7.5 且 can_submit_now = true → 建议提交签约\n")
+    f.write(f"- weighted_total < 6.5 → 不建议提交，需重大修改\n")
+    f.write(f"- 6.5 <= weighted_total < 7.5 → 有条件建议提交，需针对性修改\n")
     f.write("- 即使总分达标，如果开篇质量低于5.0，也必须先修改前3章\n")
     f.write("- 字数未达标时 can_submit_now 为 false，但可给出质量评估\n")
 

@@ -12,8 +12,16 @@ BOOK_TYPE="${2:?}"
 PROTAGONIST_NAME="${3:?}"
 PROTAGONIST_SEX="${4:?}"
 
-# Generate slug (lowercase + hyphens, replace non-alphanumeric with hyphen)
-SLUG=$(echo "$BOOK_SLUG" | sed 's/[[:space:]]/-/g' | sed 's/[^a-zA-Z0-9\u4e00-\u9fff]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+# Generate slug (lowercase + hyphens, keep alphanumeric and CJK characters)
+SLUG=$(python3 -c "
+import sys, re
+s = sys.argv[1].lower()
+s = re.sub(r'[\u4e00-\u9fff]', lambda m: m.group(0), s)  # keep CJK
+s = re.sub(r'[^a-z0-9\u4e00-\u9fff]', '-', s)           # replace others with -
+s = re.sub(r'-{2,}', '-', s)                              # collapse multiple -
+s = s.strip('-')                                          # trim leading/trailing -
+print(s or 'unnovel')
+" "$BOOK_SLUG")
 BOOK_DIR="novels/${BOOK_SLUG}_${SLUG}"
 
 echo "============================================"
@@ -26,7 +34,6 @@ echo "============================================"
 
 # 创建目录结构
 mkdir -p "$BOOK_DIR/chapters"
-mkdir -p "$BOOK_DIR/scripts"
 
 # 创建 config.env
 cat > "$BOOK_DIR/config.env" << EOF

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Count Chinese characters in a chapter file.
+"""统计章节文件的中文字符数。
 
-Usage: python3 scripts/count_chars.py <chapter_file.md>
+用法: python3 scripts/count_chars.py <chapter_file.md>
+      python3 scripts/count_chars.py chapters/ch001_xxx.md
 """
 import re
 import sys
+import os
 
 def count_chinese_chars(filepath):
     content = open(filepath).read()

@@ -23,7 +23,7 @@ def count_chinese_chars(content: str) -> int:
     return len(re.findall(r'[\u4e00-\u9fff]', text))
 
 
-def scan_book(chapters_dir: str) -> list:
+def scan_book(chapters_dir: str, min_words: int = 2000, max_words: int = 3500) -> list:
     """扫描一书的章节，返回字数统计列表。"""
     results = []
     if not os.path.isdir(chapters_dir):
@@ -49,7 +49,7 @@ def scan_book(chapters_dir: str) -> list:
                 if re.match(r'^【本章字数：\d+字】$', stripped):
                     formatted_correctly = True
         
-        status = "OK" if chinese >= 6000 else ("WARN" if chinese >= 3000 else "LOW")
+        status = "OK" if min_words <= chinese <= max_words else ("WARN" if chinese >= min_words else "LOW")
         flag = "" if formatted_correctly else " ✗格式不统一"
         results.append({
             'file': f,
@@ -92,13 +92,40 @@ def fix_book(chapters_dir: str) -> int:
     return fixed
 
 
+def load_config(path):
+    """从 config.env 读取配置。"""
+    config = {}
+    if not os.path.exists(path):
+        return config
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('#') or '=' not in line:
+                continue
+            key, val = line.split('=', 1)
+            config[key.strip()] = val.strip().strip('"')
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(description='批量修复小说章节字数标注')
     parser.add_argument('--fix', action='store_true', help='执行修复而非仅扫描')
     parser.add_argument('--book', type=str, default=None, help='只处理指定书目录')
     args = parser.parse_args()
     
-    base = "/home/ka/桌面/fanqie-novel/books/"
+    # 默认从 CWD 的 novels/ 或上级 novels/ 查找，兼容多位置
+    candidates = [
+        os.path.join(os.getcwd(), 'novels'),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'novels'),
+    ]
+    base = None
+    for c in candidates:
+        if os.path.isdir(c):
+            base = c
+            break
+    if not base:
+        print("错误: 找不到 novels/ 目录。请 cd 到项目根目录或传 --book 参数", file=sys.stderr)
+        sys.exit(1)
     book_dirs = sorted(glob.glob(os.path.join(base, "book*")))
     
     if args.book:
@@ -110,7 +137,11 @@ def main():
     for book_dir in book_dirs:
         name = os.path.basename(book_dir)
         chapters_dir = os.path.join(book_dir, "chapters")
-        results = scan_book(chapters_dir)
+        # 从每本书的 config.env 读取字数标准
+        cfg = load_config(os.path.join(book_dir, 'config.env'))
+        min_words = int(cfg.get('MIN_WORDS', '2000'))
+        max_words = int(cfg.get('MAX_WORDS', '3500'))
+        results = scan_book(chapters_dir, min_words, max_words)
         
         if not results:
             continue
@@ -122,7 +153,7 @@ def main():
         
         print(f"\n{'='*60}")
         print(f"  {name} ({len(results)} 章)")
-        print(f"  OK(≥6000): {ok}  WARN(3000-5999): {warn}  LOW(<3000): {low}")
+        print(f"  OK({min_words}-{max_words}): {ok}  WARN({max_words}+): {warn}  LOW(<{min_words}): {low}")
         if bad_format > 0:
             print(f"  ⚠️ 格式不统一: {bad_format} 章")
             for r in results:
