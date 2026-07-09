@@ -19,8 +19,8 @@
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│  Writer     │────▶│  Evaluator   │────▶│  通过?      │────▶│  De-AI       │
-│  Agent      │     │  Agent       │     │  (≥7/10)    │     │  Agent       │
+|  Writer     │────▶│  Evaluator   │────▶│  通过?      │────▶│  De-AI       │
+│  Agent      │     │  Agent       │     │  (≥阈值)    │     │  Agent       │
 │  (写作)     │◀────│  (评分)      │     │             │     │  (去AI痕迹)  │
 └─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
        ▲                     │                   │
@@ -31,13 +31,13 @@
                       │  (重写)      │           │
                       └──────────────┘           │
                                                  │
-                                    (低于7分重试，最多2次)
+                                    (低于阈值重试，最多2次)
 ```
 
 **设计理念：**
 - 每次只写一章 —— 严格对齐大纲，质量稳定
 - 写完即评 —— 7维度评分，不达标自动重写
-- **每章必做去AI痕迹** —— 不等到签约时才处理
+- **评价通过后才做去AI痕迹** —— 不等到签约时才处理
 - 配置动态化 —— 字数、阈值全部来自 `config.env`，绝不硬编码
 - 上下文精简 —— Writer Agent 只接收上一章+最近2章摘要（约10KB，而非54KB）
 
@@ -89,7 +89,7 @@ bash templates/init.sh "书名" "类型" "主角名" "性别"
 
 #### 第四步：逐章写作
 
-每章自动执行：Writer → Evaluator → (Rewriter if needed) → 下一张
+每章自动执行：Writer → Evaluator → (Rewriter if needed) → De-AI → 下一章
 
 详见 `references/prompts/orchestrator.md`。
 
@@ -164,7 +164,9 @@ cronjob (每日触发)
   → 调用 Writer Agent (delegate_task)
   → 运行 evaluate_chapter.sh
   → 调用 Evaluator Agent (delegate_task)
-  → 如果不通过：调用 Rewriter Agent (delegate_task)
+  → 如果通过（≥阈值）：运行 de_ai_rewrite.sh + 调用 De-AI Agent
+  → 如果不通过（<阈值）：调用 Rewriter Agent (delegate_task)，重新评价
+  → 如果字数达到 SIGN_WORDS：触发签约评估
   → 继续下一章
 ```
 
@@ -260,6 +262,9 @@ Writer Agent 接收**最小上下文窗口**：
 - **模板化结尾**：禁用"充满了信心"、"才刚刚开始"等套话，每章结尾必须有具体剧情钩子
 - **去AI报告分离**：报告保存在 `.deai_report_NNN.md`，章节文件保持干净
 - **临时文件**：`.eval_*.md`、`.deai_material_*.md`、`.sign_assess.md` 已被 gitignore
+- **章节超3500字**：如果 Writer 写的章节超过 MAX_WORDS，用 Rewriter 压缩而非重写——保留核心剧情和关键对话，删掉重复对话和冗余心理描写
+- **评价顺序**：流程是 Writer → Evaluator → (Rewriter if needed) → De-AI，不是先 De-AI 再评价。De-AI 只在评价通过后运行
+- **签约阈值**：逐章评分通过阈值可配置（`EVAL_THRESHOLD`）。签约评估门槛更高：加权总分 ≥ 7.5/10，AI痕迹检测 < 5.0 必须大幅改写
 
 ## 环境要求
 

@@ -20,8 +20,8 @@ An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) 
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│  Writer     │────▶│  Evaluator   │────▶│  Pass?      │────▶│  De-AI       │
-│  Agent      │     │  Agent       │     │  (≥7/10)    │     │  Agent       │
+|  Writer     │────▶│  Evaluator   │────▶│  Pass?      │────▶│  De-AI       │
+│  Agent      │     │  Agent       │     │  (≥threshold) │     │  Agent       │
 │  (write)    │◀────│  (score)     │     │             │     │  (de-AI)     │
 └─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
        ▲                     │                   │
@@ -32,7 +32,7 @@ An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) 
                       │  (rewrite)   │           │
                       └──────────────┘           │
                                                  │
-                                   (fail < 7/10, retry ≤2x)
+                                   (fail < threshold, retry ≤2x)
 ```
 
 **Key design principles:**
@@ -89,7 +89,7 @@ See `templates/publish_guide.md` for detailed instructions.
 
 #### Step 4: Write chapters
 
-Each chapter auto-executes: Writer → Evaluator → De-AI → (Rewriter if needed) → Next chapter
+Each chapter auto-executes: Writer → Evaluator → (Rewriter if needed) → De-AI → Next chapter
 
 See `references/prompts/orchestrator.md` for details.
 
@@ -170,7 +170,7 @@ python3 ../../scripts/publish_fanqie.py chapters/ch010_*.md
 
 ### 4. Automated Pipeline (Cron Job)
 
-The recommended approach is to use the orchestrator as a cron job, which triggers the full Write→Evaluate→De-AI→Rewrite cycle:
+The recommended approach is to use the orchestrator as a cron job, which triggers the full Write→Evaluate→(Rewrite if needed)→De-AI cycle:
 
 ```
 cronjob (triggered daily)
@@ -178,8 +178,9 @@ cronjob (triggered daily)
   → Spawns Writer Agent (delegate_task)
   → Runs evaluate_chapter.sh
   → Spawns Evaluator Agent (delegate_task)
-  → If pass: runs de_ai_rewrite.sh + spawns De-AI Agent
-  → If fail: spawns Rewriter Agent (delegate_task)
+  → If pass (≥ threshold): runs de_ai_rewrite.sh + spawns De-AI Agent
+  → If fail (< threshold): spawns Rewriter Agent (delegate_task), re-evaluate
+  → If word count reaches SIGN_WORDS: triggers sign-off assessment
   → Continues to next chapter
 ```
 
@@ -314,6 +315,9 @@ This replaces the old approach of reading all previous chapters (~54KB) with jus
 - **Template endings:** Ban generic closing phrases like "充满了信心" or "才刚刚开始". Each ending must have a specific plot hook.
 - **De-AI report is separate:** Reports go to `.deai_report_NNN.md`, chapter files stay clean.
 - **Temporary files:** `.eval_*.md`, `.deai_material_*.md`, `.sign_assess.md` are gitignored.
+- **Chapter over 3500 words:** If Writer exceeds MAX_WORDS, use Rewriter to compress rather than rewriting — keep core plot and key dialogue, remove repetitive conversations and redundant inner monologue.
+- **Evaluation order:** The pipeline is Writer → Evaluator → (Rewriter if needed) → De-AI, not De-AI before evaluation. De-AI only runs after evaluation passes.
+- **Sign-off threshold:** Evaluation threshold for per-chapter scoring is configurable (`EVAL_THRESHOLD`). Sign-off assessment has a higher bar: weighted total ≥ 7.5/10 with AI trace score < 5.0 requiring heavy rewrite.
 
 ## Requirements
 
