@@ -28,7 +28,7 @@ novels/                  ← Novel Data (私有, gitignored)
 ## 关键设计
 
 - **相对路径**: 所有脚本通过 `cd` 到书目录后运行，不依赖绝对路径
-- **CWD 感知**: `evaluate_chapter.sh` 从 `$PWD`（当前工作目录）查找 `config.env`
+- **CWD 感知**: `eval_material.py` 从 `$PWD`（当前工作目录）查找 `config.env`
 - **模板化**: 新建小说用 `cp -r templates/ novels/bookN_newname/` 快速初始化
 
 ## .gitignore

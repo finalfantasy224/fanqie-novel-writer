@@ -15,16 +15,16 @@
 ## 5. 本章写作
 本章内容必须严格符合大纲中对应章节区间的关键事件。
 
-## 6. 字数统计与标注
-每章完成后，必须用Python统计中文字数并替换末尾的字数标注：
+## 6. 字数验证
+每章完成后，必须用Python统计中文字数并确认在2000-3500区间内：
 ```python
 import re
 with open(path, 'r', encoding='utf-8') as f: content = f.read()
-lines = [l for l in content.split('\n') if not l.startswith('【')]
-chinese = len(re.findall(r'[\u4e00-\u9fff]', '\n'.join(lines)))
-content = re.sub(r'【[^】]*字数[^】]*】', f'【本章字数：{chinese}字】', content)
+wc = len(re.findall(r'[\u4e00-\u9fff]', content))
+print(f'{wc} chars — {"OK" if 2000 <= wc <= 3500 else "OVER/LOW"}')
 ```
-**绝对禁止使用AI估算的字数标注**（如"约3000字"、"XXXX"等全是假的）。
+**绝对禁止使用AI估算字数**。
+**章节文件末尾不要写字数标注**——番茄后台自动识别章节内容，字数标注是流水线内部使用的元数据，不应出现在正文文件中。
 
 ## 7. 验证完成
 检查最终标注是否正确、章节内容是否符合大纲。
