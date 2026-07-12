@@ -59,14 +59,14 @@ hermes skills install skills/novel-outline-discipline
 
 ```
 1. 初始化 ──→  2. AI 写大纲 ──→  3. AI 写角色 ──→  4. 逐章写作 ──→  5. 发布
-   init.sh       outline.md        characters.md     orchestrator       publish_fanqie.py
+   init_book.py      outline.md        characters.md     orchestrator       publish_fanqie.py
 ```
 
 #### 第一步：初始化新书
 
 ```bash
-bash templates/init.sh "书名" "类型" "主角名" "性别"
-# 例: bash templates/init.sh "我的修仙家族" "仙侠家族" "李玄" "男"
+python3 scripts/init_book.py "书名" "类型" "主角名" "性别"
+# 例: python3 scripts/init_book.py "我的修仙家族" "仙侠家族" "李玄" "男"
 ```
 
 这会创建 `novels/` 目录结构 + config.env + 空 outline + 空 characters。
@@ -120,13 +120,12 @@ fanqie-novel-writer/
 ├── scripts/                           # 公共脚本（每本书通过 CWD 引用）
 │   ├── gen_writer_goal.py            # 动态生成Writer Agent目标
 │   ├── update_outline_status.py      # 自动更新大纲状态
-│   ├── evaluate_chapter.sh           # 准备评价素材
-│   ├── de_ai_rewrite.sh              # 准备去AI素材
-│   ├── assess_sign_off.sh            # 准备签约评估素材
-│   ├── publish_fanqie.py             # 章节发布脚本
-│   └── fix_word_counts.py            # 批量修复字数标注
+│   ├── eval_material.py              # 准备评价素材 → .temp/.eval_material_NNN.md
+│   ├── deai_material.py              # 准备去AI素材 → .temp/.deai_material_NNN.md
+│   ├── sign_assess.py                # 准备签约评估素材 → .temp/.sign_assess.md
+│   ├── init_book.py                  # 新书初始化脚本
+│   └── publish_fanqie.py             # 章节发布脚本
 ├── templates/                      # 模板和指南
-│   ├── init.sh                     # 新书初始化脚本
 │   └── publish_guide.md            # 发布指南
 ├── skills/                         # AI 技能（hermes skills install 安装）
 │   ├── fanqie-novel-auto/
@@ -148,7 +147,7 @@ python3 ../../scripts/gen_writer_goal.py . 10
 python3 ../../scripts/update_outline_status.py 10 .
 
 # 准备评价素材
-bash ../../scripts/evaluate_chapter.sh 10
+python3 ../../scripts/eval_material.py 10
 
 # 发布（通过评价后）
 python3 ../../scripts/publish_fanqie.py chapters/ch010_*.md
@@ -162,9 +161,9 @@ python3 ../../scripts/publish_fanqie.py chapters/ch010_*.md
 cronjob (每日触发)
   → Orchestrator Agent 读取 orchestrator.md
   → 调用 Writer Agent (delegate_task)
-  → 运行 evaluate_chapter.sh
+  → 运行 eval_material.py
   → 调用 Evaluator Agent (delegate_task)
-  → 如果通过（≥阈值）：运行 de_ai_rewrite.sh + 调用 De-AI Agent
+  → 如果通过（≥阈值）：运行 deai_material.py + 调用 De-AI Agent
   → 如果不通过（<阈值）：调用 Rewriter Agent (delegate_task)，重新评价
   → 如果字数达到 SIGN_WORDS：触发签约评估
   → 继续下一章
@@ -255,13 +254,12 @@ Writer Agent 接收**最小上下文窗口**：
 
 - **Cookie 过期**：番茄后台 Cookie 约1-2个月失效，需定期刷新
 - **字数硬编码**：`delegate_task` 的 goal 中字数必须从 `config.env` 动态读取，不能写死
-- **文件名格式**：严格使用 `chNNN_第N章 标题.md`，脚本用 glob 通配符查找
-- **bash→Python 传参**：用 `export VAR=value` + `os.environ['VAR']`，不要用 heredoc 内嵌字符串
+- **文件名格式:** 严格使用 `chNNN_第N章 标题.md`，脚本用 glob 通配符查找。Python 的 `glob.glob()` 可直接处理中文文件名。
 - **AI 字数造假**：AI 估算偏差可达50%+，写完后必须用 Python 重新统计
 - **大纲漂移**：AI 可能偏离大纲，写作前必须校验大纲区间
 - **模板化结尾**：禁用"充满了信心"、"才刚刚开始"等套话，每章结尾必须有具体剧情钩子
 - **去AI报告分离**：报告保存在 `.deai_report_NNN.md`，章节文件保持干净
-- **临时文件**：`.eval_*.md`、`.deai_material_*.md`、`.sign_assess.md` 已被 gitignore
+- **临时文件**：`.eval_*.md`、`.deai_material_*.md`、`.sign_assess.md` 等临时文件已移至各书目录的 `.temp/` 子目录，并被 gitignore
 - **章节超3500字**：如果 Writer 写的章节超过 MAX_WORDS，用 Rewriter 压缩而非重写——保留核心剧情和关键对话，删掉重复对话和冗余心理描写
 - **评价顺序**：流程是 Writer → Evaluator → (Rewriter if needed) → De-AI，不是先 De-AI 再评价。De-AI 只在评价通过后运行
 - **签约阈值**：逐章评分通过阈值可配置（`EVAL_THRESHOLD`）。签约评估门槛更高：加权总分 ≥ 7.5/10，AI痕迹检测 < 5.0 必须大幅改写
@@ -269,7 +267,6 @@ Writer Agent 接收**最小上下文窗口**：
 ## 环境要求
 
 - Python 3.11+
-- Bash（用于 shell 脚本）
 - 番茄小说作者后台访问权限（获取 Cookie 和 Book ID）
 
 ## 许可证

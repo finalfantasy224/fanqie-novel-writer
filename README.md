@@ -60,13 +60,13 @@ hermes skills install skills/novel-outline-discipline
 
 ```
 1. Init ──→ 2. AI writes outline ──→ 3. AI writes characters ──→ 4. Write chapters ──→ 5. Sign-off ──→ 6. Publish
-   init.sh       outline.md            characters.md              orchestrator       at 20k words    publish_fanqie.py
+   init_book.py        outline.md            characters.md              orchestrator       at 20k words    publish_fanqie.py
 ```
 
 #### Step 1: Initialize a new novel
 
 ```bash
-bash templates/init.sh "My Cultivation Family" "xianxia" "Li Xuan" "male"
+python3 scripts/init_book.py "My Cultivation Family" "xianxia" "Li Xuan" "male"
 ```
 
 This creates the `novels/` directory structure with config.env, empty outline, and empty characters.
@@ -124,13 +124,12 @@ fanqie-novel-writer/
 ├── scripts/                           # Shared scripts (CWD-based)
 │   ├── gen_writer_goal.py            # Generate Writer Agent goal from config
 │   ├── update_outline_status.py      # Auto-update outline status markers
-│   ├── evaluate_chapter.sh           # Prepare evaluation material
-│   ├── de_ai_rewrite.sh              # Prepare de-AI material
-│   ├── assess_sign_off.sh            # Prepare sign-off assessment material
-│   ├── publish_fanqie.py             # Chapter publishing script (API 3-step flow)
-│   └── fix_word_counts.py            # Batch fix word count annotations
+│   ├── eval_material.py              # Prepare evaluation material → .temp/.eval_material_NNN.md
+│   ├── deai_material.py              # Prepare de-AI material → .temp/.deai_material_NNN.md
+│   ├── sign_assess.py                # Prepare sign-off assessment material → .temp/.sign_assess.md
+│   ├── init_book.py                  # Initialize a new novel
+│   └── publish_fanqie.py             # Chapter publishing script (API 3-step flow)
 ├── templates/
-│   ├── init.sh
 │   └── publish_guide.md
 ├── skills/                         # AI skills (install via hermes skills install)
 │   ├── fanqie-novel-auto/
@@ -141,8 +140,8 @@ fanqie-novel-writer/
 ### 2. Initialize a Novel
 
 ```bash
-# Initialize a new book (use init.sh)
-bash templates/init.sh "My New Novel" "genre" "Protagonist" "gender"
+# Initialize a new book (use init_book.py)
+python3 scripts/init_book.py "My New Novel" "genre" "Protagonist" "gender"
 ```
 
 ### 3. Write a Chapter (Manual)
@@ -159,10 +158,10 @@ python3 ../../scripts/gen_writer_goal.py . 10
 python3 ../../scripts/update_outline_status.py 10 .
 
 # Step 4: Evaluate
-bash ../../scripts/evaluate_chapter.sh 10
+python3 ../../scripts/eval_material.py 10
 
 # Step 5: De-AI (after evaluation passes)
-bash ../../scripts/de_ai_rewrite.sh 10
+python3 ../../scripts/deai_material.py 10
 
 # Step 6: Publish (if passes)
 python3 ../../scripts/publish_fanqie.py chapters/ch010_*.md
@@ -176,9 +175,9 @@ The recommended approach is to use the orchestrator as a cron job, which trigger
 cronjob (triggered daily)
   → Orchestrator Agent reads orchestrator.md
   → Spawns Writer Agent (delegate_task)
-  → Runs evaluate_chapter.sh
+  → Runs eval_material.py
   → Spawns Evaluator Agent (delegate_task)
-  → If pass (≥ threshold): runs de_ai_rewrite.sh + spawns De-AI Agent
+  → If pass (≥ threshold): runs deai_material.py + spawns De-AI Agent
   → If fail (< threshold): spawns Rewriter Agent (delegate_task), re-evaluate
   → If word count reaches SIGN_WORDS: triggers sign-off assessment
   → Continues to next chapter
@@ -243,7 +242,7 @@ After every chapter passes evaluation, a De-AI agent runs to eliminate AI-genera
 - Formulaic chapter endings
 
 ### How it works:
-1. `de_ai_rewrite.sh` aggregates the chapter + recent chapters
+1. `deai_material.py` aggregates the chapter + recent chapters
 2. De-AI Agent reads `de-ai-agent.md` prompt template
 3. Agent modifies the chapter file in-place
 4. De-AI report saved to `.deai_report_NNN.md` (separate from chapter)
@@ -264,8 +263,9 @@ When word count reaches `SIGN_WORDS` (default 20,000), a comprehensive assessmen
 | 人物辨识度 | 10% | Character memorability |
 | 文笔自然度 | 15% | Natural writing style |
 | AI痕迹检测 | 15% | AI trace detection |
+| 现实合规 | N/A | Not separately scored — reality entity errors and era mistakes directly lower other dimension scores |
 
-**Pass threshold:** Weighted total ≥ 7.5/10. AI trace score < 5.0 → must rewrite heavily.
+**Pass threshold:** Weighted total ≥ 7.5/10. AI trace score < 5.0 → must rewrite heavily. Reality entity errors or era mistakes flagged as "must fix before submission".
 
 ## Publishing
 
@@ -309,20 +309,23 @@ This replaces the old approach of reading all previous chapters (~54KB) with jus
 - **Cookie expiry:** Tomato Novel cookies expire after 1-2 months. Refresh periodically.
 - **Word count hardcoding:** Never hardcode word limits in `delegate_task` goals. Always read from `config.env` via `gen_writer_goal.py`.
 - **File naming:** Strictly use `chNNN_第N章 标题.md` format. Scripts use glob patterns to find files.
-- **Bash→Python Chinese filenames:** Use `export VAR=value` + `os.environ['VAR']`, not heredoc interpolation.
+- **Chinese filenames in glob:** Use `glob.glob()` with proper patterns to find chapter files.
 - **AI word count lies:** AI estimates can be off by 50%+. Always use Python regex after writing.
 - **Outline drift:** AI may deviate from outline. Always verify outline alignment before writing.
 - **Template endings:** Ban generic closing phrases like "充满了信心" or "才刚刚开始". Each ending must have a specific plot hook.
 - **De-AI report is separate:** Reports go to `.deai_report_NNN.md`, chapter files stay clean.
-- **Temporary files:** `.eval_*.md`, `.deai_material_*.md`, `.sign_assess.md` are gitignored.
+- **Temporary files:** `.eval_*.md`, `.deai_material_*.md`, `.sign_assess.md` go into the book's `.temp/` directory and are gitignored.
 - **Chapter over 3500 words:** If Writer exceeds MAX_WORDS, use Rewriter to compress rather than rewriting — keep core plot and key dialogue, remove repetitive conversations and redundant inner monologue.
 - **Evaluation order:** The pipeline is Writer → Evaluator → (Rewriter if needed) → De-AI, not De-AI before evaluation. De-AI only runs after evaluation passes.
 - **Sign-off threshold:** Evaluation threshold for per-chapter scoring is configurable (`EVAL_THRESHOLD`). Sign-off assessment has a higher bar: weighted total ≥ 7.5/10 with AI trace score < 5.0 requiring heavy rewrite.
+- **No word count tags in chapter files:** Chapter files should NOT contain `【本章字数：XXX字】` or `【下一章预告：XXX】` at the end. These are pipeline metadata, not story content. The pipeline scripts verify word counts separately.
+- **Reality entity names:** All real place names, company names, media outlets, and universities MUST be replaced with fictional equivalents. See `{BOOK_DIR}/entities_mapping.md` for the full list and replacement rules. Tomato's 2026 review is extremely strict about this.
+- **Era errors:** 2005-era stories cannot mention brands/terms that didn't exist yet (抖音, 拼多多, 等保三级认证, ICP许可证, etc.). The de-AI agent and Writer Agent both have era-check rules built in.
+- **Mid-volume pacing boost:** When sign-off assessment flags "low satisfaction density in middle chapters", the most effective fix is inserting a mid-level face-slapping scene around chapters 10-20. The phone-call counterattack pattern works best (see below).
 
 ## Requirements
 
 - Python 3.11+
-- Bash (for shell scripts)
 - Access to Tomato Novel author backend (for API cookies and book IDs)
 
 ## License

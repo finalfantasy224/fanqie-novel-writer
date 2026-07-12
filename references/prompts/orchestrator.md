@@ -30,7 +30,8 @@
 2. 读取最近2章的开头各200字（用于了解人物语气和近期事件）
 3. 读取 outline.md 中对应章节的大纲片段
 4. 读取 characters.md 的前500字（角色关键设定）
-5. 将这些信息打包传入 delegate_task 的 goal/context 中
+5. **读取 `{BOOK_DIR}/entities_mapping.md`**（地名/机构名映射表）
+6. 将这些信息打包传入 delegate_task 的 goal/context 中
 
 ### 步骤3：spawn Writer Agent
 - 先运行 `python3 scripts/gen_writer_goal.py <book_dir> <CHAPTER_NUM>` 生成字数要求的 goal 模板
@@ -38,17 +39,19 @@
 - delegate_task 给 Writer Agent，role=leaf, toolsets=["file","terminal"]
 - 等待 Writer Agent 产出章节文件
 - 验证：ls chapters/ | sort -V 检查文件是否存在且非空
+- **注意**：Writer 不应在章节末尾写入【本章字数：XXX字】或【下一章预告：XXX】。章节文件只包含纯正文。
 
 ### 步骤4：更新 outline 状态
 运行 `scripts/update_outline_status.py <CHAPTER_NUM>` 将 outline 中该章标记为 ✅
 
 ### 步骤5：准备评价素材
-运行 `bash scripts/evaluate_chapter.sh {CHAPTER_NUM}`
-生成 `.eval_material_{PADDED}.md` 文件
+运行 `python3 scripts/eval_material.py {CHAPTER_NUM}`
+生成 `.temp/.eval_material_{PADDED}.md` 文件
 
 ### 步骤6：spawn Evaluator Agent
 - 读取 references/prompts/evaluator-agent.md 作为模板
 - 填入评价素材文件路径、章节号、阈值
+- **将 `{BOOK_DIR}/entities_mapping.md` 的内容也传入 goal/context**（Evaluator 需要用它检查现实地名合规性）
 - delegate_task 给 Evaluator Agent，goal="评价章节质量"
 - 解析返回的 JSON 评分结果
 
@@ -58,8 +61,8 @@
 
 ### 步骤8：去AI痕迹润色（每章必做）
 **每章评价通过后立即润色，不等2万字。** 保证前3章就没有AI痕迹：
-1. 运行 `bash scripts/de_ai_rewrite.sh {CHAPTER_NUM}`
-   生成 `.deai_material_{PADDED}.md` 去AI润色素材
+1. 运行 `python3 scripts/deai_material.py {CHAPTER_NUM}`
+   生成 `.temp/.deai_material_{PADDED}.md` 去AI润色素材
 2. 读取 `references/prompts/de-ai-agent.md` 作为模板
 3. delegate_task 给 Rewriter Agent（复用），goal="去AI痕迹润色第{CHAPTER_NUM}章"
 4. 验证文件已更新：
@@ -83,8 +86,8 @@
 
 ### 步骤11：签约评估（新增）
 在卷内写到第{SIGN_WORDS}章（约2万字）时，触发签约评估：
-1. 运行 `bash scripts/assess_sign_off.sh`
-   生成 `.sign_assess.md` 签约评估素材文件
+1. 运行 `python3 scripts/sign_assess.py`
+   生成 `.temp/.sign_assess.md` 签约评估素材文件
 2. 读取 `references/prompts/sign-assessment-agent.md` 作为模板
 3. delegate_task 给 Evaluator Agent（复用），goal="评估本书是否符合番茄签约要求"
 4. 解析返回的JSON评分结果：
@@ -106,6 +109,23 @@
 - 如果连续2章都未达标 → 输出警告，但仍继续
 - 如果某章重试 {MAX_RETRIES} 次后仍不达标 → 标记"待人工审核"，继续下一章
 - 任何 agent 调用失败 → 记录错误，跳过该章继续
+
+## 通用性设计原则
+
+- 所有 prompt 使用 `{PLACEHOLDER}` 语法注入配置值，禁止硬编码具体书名/角色名/地名
+- 现实实体名规则通过 `{BOOK_DIR}/entities_mapping.md` 差异化配置，prompt 中只引用不硬编码
+  - 如果某书没有 `entities_mapping.md`，使用通用虚构城市体系（见下方）
+- 每本书的 config.env 控制所有数值参数（字数阈值、评分阈值等）
+- 引擎脚本从当前工作目录读取 config.env，不依赖绝对路径
+
+### 通用虚构城市体系（fallback）
+
+当某本书没有 `entities_mapping.md` 文件时，所有 agent 应使用以下通用规则：
+- 城市名：{CITY_NAME}（对应 {REAL_CITY}）
+- 报纸：{NEWSPAPER_NAME}
+- 电视台：{TV_STATION_NAME}
+- 日报：{DAILY_NAME}
+- 大学：{UNIVERSITY_NAME}
 
 ## 输出格式
 

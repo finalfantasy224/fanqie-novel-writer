@@ -14,18 +14,25 @@ related_skills: [novel-outline-discipline]
 
 ```
 fanqie-novel-writer/          ← Engine (公开, tracked in git)
-├── references/prompts/    # Agent 提示词模板
+├── references/prompts/    # Agent 提示词模板（供 delegate_task 加载）
 │   ├── orchestrator.md
 │   ├── writer-agent.md
 │   ├── evaluator-agent.md
-│   └── rewriter-agent.md
-├── scripts/               # 共享脚本（所有书共用）
+│   ├── rewriter-agent.md
+│   ├── de-ai-agent.md
+│   └── sign-assessment-agent.md
+├── references/guides/     # 参考文档（非 prompt，供人类阅读）
+│   ├── reality-entity-compliance.md
+│   └── volume1-postmortem.md
+├── scripts/               # 共享脚本（所有书共用，Python 实现）
 │   ├── gen_writer_goal.py           # 从config.env生成Writer Agent goal
 │   ├── update_outline_status.py     # 自动更新outline状态
-│   ├── evaluate_chapter.sh          # 准备评价素材
-│   └── publish_fanqie.py            # 番茄发布脚本
-├── templates/             # 模板和指南
-│   ├── init.sh            # 新书初始化脚本
+│   ├── eval_material.py             # 准备评价素材 → .temp/.eval_material_NNN.md
+│   ├── deai_material.py             # 去AI润色素材 → .temp/.deai_material_NNN.md
+│   ├── sign_assess.py               # 签约评估素材 → .temp/.sign_assess.md
+│   ├── init_book.py                 # 新书初始化脚本
+│   └── publish_fanqie.py            # 章节发布脚本
+├── templates/
 │   └── publish_guide.md   # 发布指南
 └── README.md
 
@@ -34,13 +41,14 @@ novels/                  ← Novel Data (私有, gitignored)
     ├── config.env       # 含 Cookie，绝不上 git
     ├── outline.md
     ├── characters.md
-    └── chapters/
+    ├── chapters/        # 章节正文 chNNN_第N章 标题.md
+    └── .temp/           # 临时文件（素材、报告、结果JSON等）
 ```
 
 - Engine 层是通用代码，可以公开到 GitHub
 - Novels 层是用户的私人创作数据，`.gitignore` 忽略整个 `novels/`
 - 每个 book 目录通过 `cd` 进入后运行脚本，不依赖绝对路径
-- 新建小说: `bash templates/init.sh "书名" "类型" "主角名" "性别"`
+- 新建小说: `python3 scripts/init_book.py "书名" "类型" "主角名" "性别"`
 
 ## 字数标准（番茄平台）
 
@@ -65,11 +73,11 @@ novels/                  ← Novel Data (私有, gitignored)
 3. python3 scripts/update_outline_status.py <chapter_num> <book_dir>
    → 将outline.md中该章标记为 ✅已完成
 
-4. bash scripts/evaluate_chapter.sh <chapter_num>
-   → 生成 .eval_material_NNN.md 评价素材
+4. python3 scripts/eval_material.py <chapter_num>
+   → 生成 .temp/.eval_material_NNN.md 评价素材
 
 5. delegate_task → Evaluator Agent
-   → 读取 .eval_material_NNN.md，输出JSON评分
+   → 读取 .temp/.eval_material_NNN.md，输出JSON评分
    → 7维度：大纲对齐度(30%)、字数达标(15%)、人物一致性(20%)、开篇钩子(10%)、结尾钩子(10%)、爽点密度(15%)、连贯性(10%)
 
 6. 判定: weighted_total >= EVAL_THRESHOLD(7)?
@@ -122,17 +130,21 @@ CURRENT_VOLUME_NAME=""
 
 ## Pitfalls
 
-- **脚本统一在根目录**: 所有共享脚本（gen_writer_goal.py, update_outline_status.py, evaluate_chapter.sh, publish_fanqie.py）放在根 `scripts/`，每本书通过 CWD 调用。不要在各书目录下放副本。
-- **SCRIPT_DIR 陷阱**: 脚本从 `book/scripts/` 移到 `root/scripts/` 后，`$(dirname "$0")/..` 会指向错误目录。改用 `$PWD`（CWD）读取 config.env。
-- **脚本精简**: 每本书 scripts/ 下只保留必要的个人脚本。根目录 scripts/ 下的共享脚本（evaluate_chapter.sh, de_ai_rewrite.sh, assess_sign_off.sh, publish_fanqie.py 等）通过 CWD 调用。不要在各书目录下放副本。
+- **脚本统一在根目录**: 所有共享脚本（gen_writer_goal.py, update_outline_status.py, eval_material.py, deai_material.py, sign_assess.py, init_book.py, publish_fanqie.py）放在根 `scripts/`，每本书通过 CWD 调用。不要在各书目录下放副本。
+- **CWD 感知**: `eval_material.py` 从 `$PWD`（当前工作目录）查找 `config.env`，必须在书目录下运行。
+- **脚本精简**: 每本书 scripts/ 下只保留必要的个人脚本。根目录 scripts/ 下的共享脚本通过 CWD 调用。不要在各书目录下放副本。
 - **字数硬编码**: delegate_task 的 goal 中字数必须从 config.env 动态读取，不能写死
-- **bash→Python传参**: 用 export + os.environ 传中文参数，不要用 heredoc 内嵌字符串插值
 - **outline状态**: 写完必须用 update_outline_status.py 更新，否则 publish 时不知道哪些已写完
 - **连贯性检查**: Evaluator 新增第7维度"连贯性"，检查与前文矛盾、角色状态一致性、重复事件
 - **不要跨书引用**: 每本书的 prompt 只能引用本书内容，禁止提到其他书
 - **publish_article不需要title**: 但 new_article 和 cover_article 需要 title 参数
+- **章节末尾不写字数标注**: 番茄后台自动识别章节内容。字数标注是流水线内部使用的元数据，不应出现在正文文件中。每章完成后用Python正则验证字数即可，不要写入【本章字数：XXXX字】到章节文件。
+- **现实实体名替换**: 签约审核严格，所有现实地名/公司名/媒体名必须替换为虚构名称。具体规则见 `{BOOK_DIR}/entities_mapping.md`。
+- **时代错误检测**: 2005年背景不能出现超越设定年代的术语（抖音、拼多多、等保三级认证、ICP许可证、德勤审计等）。写作和去AI时必须逐条检查。
+- **Writer容易过度分割段落**: 每段1-2句导致字数超标。Writer/Rewriter prompt中需明确"每段不超过3行"。超过3500字时用Rewriter压缩而非重写。
+- **去AI痕迹报告独立存储**: .deai_report_NNN.md 必须与章节正文分离，不能混入章节文件。任何元数据泄露到章节正文都是致命错误——番茄2026年对AI内容审核极严，元数据泄露直接拒签。
 
 ## Related Files
 
-- `templates/init.sh` — 新书初始化脚本
+- `scripts/init_book.py` — 新书初始化脚本
 - `templates/publish_guide.md` — 发布指南
