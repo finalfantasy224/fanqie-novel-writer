@@ -41,6 +41,13 @@
 - 验证：ls chapters/ | sort -V 检查文件是否存在且非空
 - **注意**：Writer 不应在章节末尾写入【本章字数：XXX字】或【下一章预告：XXX】。章节文件只包含纯正文。
 
+### 步骤3b：验证章节结束标记（新增）
+Writer Agent 产出后必须验证章节格式：
+- 运行 `grep -c '章 完' chapters/ch*.md` 确认只有一个结束标记
+- 确认格式为阿拉伯数字 `**（第N章 完）**`，不是中文数字
+- 确认标记在文件最后一行，前面有 `---` 分隔符
+- 如果有两个结束标记或格式错误，让 Writer 重新生成
+
 ### 步骤4：更新 outline 状态
 运行 `scripts/update_outline_status.py <CHAPTER_NUM>` 将 outline 中该章标记为 ✅
 
