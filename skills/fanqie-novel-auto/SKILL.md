@@ -1,6 +1,6 @@
 ---
 name: fanqie-novel-auto
-description: 番茄小说自动创作与发布 — 多agent orchestrator流水线（写→评→改）、番茄后台发布、config.env配置。触发词：番茄/番茄小说/fanqie/番茄作家后台/番茄作者/番茄发布/番茄上传/番茄投稿/自动写小说/番茄签到/番茄全勤/番茄签约/番茄审核/番茄数据。
+description: 番茄小说自动创作与发布 — 多agent orchestrator流水线（写→去AI→评→改）、番茄后台发布、config.env配置。触发词：番茄/番茄小说/fanqie/番茄作家后台/番茄作者/番茄发布/番茄上传/番茄投稿/自动写小说/番茄签到/番茄全勤/番茄签约/番茄审核/番茄数据。
 related_skills: [novel-outline-discipline]
 ---
 
@@ -59,7 +59,7 @@ novels/                  ← Novel Data (私有, gitignored)
 
 ## 多Agent Orchestrator 流水线（核心流程）
 
-**流程**: 一个 orchestrator agent 串行调度三个专业 agent——Writer（写）→ Evaluator（评）→ Rewriter（改），完成"写一章→评价→不达标重写→继续下一章"。
+**流程**: 一个 orchestrator agent 串行调度多个专业 agent——Writer（写）→ De-AI（去AI痕迹润色）→ Evaluator（评）→ Rewriter（改），完成"写一章→去AI→评价→不达标重写→继续下一章"。
 
 **步骤**:
 ```
@@ -68,23 +68,39 @@ novels/                  ← Novel Data (私有, gitignored)
 
 2. delegate_task → Writer Agent
    → 传入精简上下文：上一章完整内容 + 最近2章开头各200字 + 大纲片段 + 角色设定前500字
+   → 注入 {BOOK_DIR}/writing-rules.md（本书专属写作规则）
    → 产出: chapters/chNNN_第N章 标题.md
 
 3. python3 scripts/update_outline_status.py <chapter_num> <book_dir>
    → 将outline.md中该章标记为 ✅已完成
 
-4. python3 scripts/eval_material.py <chapter_num>
+4. python3 scripts/deai_material.py <chapter_num>
+   → 生成 .temp/.deai_material_NNN.md 去AI润色素材
+
+5. delegate_task → De-AI Agent（复用 Rewriter Agent）
+   → 读取 .temp/.deai_material_NNN.md，消除AI痕迹
+   → 输出润色后的章节正文 + .deai_report_NNN.md 报告
+
+6. python3 scripts/eval_material.py <chapter_num>
    → 生成 .temp/.eval_material_NNN.md 评价素材
 
-5. delegate_task → Evaluator Agent
+7. delegate_task → Evaluator Agent
    → 读取 .temp/.eval_material_NNN.md，输出JSON评分
    → 7维度：大纲对齐度(30%)、字数达标(15%)、人物一致性(20%)、开篇钩子(10%)、结尾钩子(10%)、爽点密度(15%)、连贯性(10%)
+   → 额外检查：现实实体名合规 + 时代错误检测（通过 compliance 字段）
+   → 额外约束：读取 {BOOK_DIR}/writing-rules.md 检查书专属规则
 
-6. 判定: weighted_total >= EVAL_THRESHOLD(7)?
+8. 判定: weighted_total >= EVAL_THRESHOLD(7)?
    → YES → 继续下一章
    → NO  → delegate_task → Rewriter Agent（带反馈重写，最多EVAL_MAX_RETRIES=2次）
-           → 回到步骤3（重新评价）
+            → 回到步骤3（重新评价）
 ```
+
+**关键改动（2026-07-20）：**
+- De-AI在评价之前执行——Evaluator评的是最终稿，不是原文
+- 第3章完成后触发人工审核门控，开篇质量不过关不继续写作
+- 签约评估提前到约1.2万字（第5章），不再等2万字
+- 每本书的专属规则放在 `novels/bookN/writing-rules.md`，由orchestrator注入各Agent上下文
 
 **评分JSON格式**:
 ```json

@@ -19,21 +19,24 @@ An automated novel writing pipeline for [Tomato Novel](https://fanqienovel.com) 
 ## Overview
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-|  Writer     │────▶│  Evaluator   │────▶│  Pass?      │────▶│  De-AI       │
-│  Agent      │     │  Agent       │     │  (≥threshold) │     │  Agent       │
-│  (write)    │◀────│  (score)     │     │             │     │  (de-AI)     │
-└─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
-       ▲                     │                   │
-       │                     ▼                   │
-       │              ┌──────────────┐           │
-       └──────────────│  Rewriter    │           │
-                      │  Agent       │           │
-                      │  (rewrite)   │           │
-                      └──────────────┘           │
-                                                 │
-                                   (fail < threshold, retry ≤2x)
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+|  Writer     │────▶│  De-AI       │────▶│  Evaluator   │────▶│  Pass?       │
+│  Agent      │     │  Agent       │     │  Agent       │     │  (≥threshold)│
+│  (write)    │     │  (de-AI)     │     │  (score)     │     │              │
+└─────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+                                                       │                │
+                                                       ▼                │
+                                                 ┌──────────────┐       │
+                                                 │  Rewriter    │◀──────┘
+                                                 │  Agent       │
+                                                 │  (rewrite)   │
+                                                 └──────────────┘
 ```
+
+**关键改动（2026-07-20）：**
+- 去AI润色在评价之前执行——Evaluator 评的是最终稿，不是原文
+- 第3章完成后触发人工审核门控，开篇质量不过关不继续写作
+- 签约评估提前到约1.2万字（第5章），不再等2万字
 
 **Key design principles:**
 - One chapter per run — strict outline alignment, stable quality
@@ -316,7 +319,7 @@ This replaces the old approach of reading all previous chapters (~54KB) with jus
 - **De-AI report is separate:** Reports go to `.deai_report_NNN.md`, chapter files stay clean.
 - **Temporary files:** `.eval_*.md`, `.deai_material_*.md`, `.sign_assess.md` go into the book's `.temp/` directory and are gitignored.
 - **Chapter over 3500 words:** If Writer exceeds MAX_WORDS, use Rewriter to compress rather than rewriting — keep core plot and key dialogue, remove repetitive conversations and redundant inner monologue.
-- **Evaluation order:** The pipeline is Writer → Evaluator → (Rewriter if needed) → De-AI, not De-AI before evaluation. De-AI only runs after evaluation passes.
+- **Evaluation Order:** The pipeline is Writer → De-AI → Evaluator → (Rewriter if needed), not Evaluator → De-AI. De-AI runs before evaluation so the Evaluator scores the final polished version, matching what the sign-off editor will see.
 - **Sign-off threshold:** Evaluation threshold for per-chapter scoring is configurable (`EVAL_THRESHOLD`). Sign-off assessment has a higher bar: weighted total ≥ 7.5/10 with AI trace score < 5.0 requiring heavy rewrite.
 - **No word count tags in chapter files:** Chapter files should NOT contain `【本章字数：XXX字】` or `【下一章预告：XXX】` at the end. These are pipeline metadata, not story content. The pipeline scripts verify word counts separately.
 - **Reality entity names:** All real place names, company names, media outlets, and universities MUST be replaced with fictional equivalents. See `{BOOK_DIR}/entities_mapping.md` for the full list and replacement rules. Tomato's 2026 review is extremely strict about this.

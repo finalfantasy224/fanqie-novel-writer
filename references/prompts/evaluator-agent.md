@@ -17,6 +17,9 @@
 - 待评价章节完整内容
 - 评分维度说明
 
+### 本书专属写作规则
+**必须读取 `{BOOK_DIR}/writing-rules.md`**。该文件包含本书的专属写作约束（如科学术语翻译、旁衬规范、对话风格等）。检查本章是否违反这些规则，如有违反在 suggestion 中明确指出并严重影响相关维度评分。
+
 ### 评分维度（1-10分）
 
 1. **大纲对齐度（权重30%）**
@@ -57,12 +60,12 @@
 8. **现实实体名合规（权重0%，但影响评分）**
    - 检查是否使用了真实地名/公司名/媒体名/大学名
    - 具体替换规则见 `{BOOK_DIR}/entities_mapping.md`
-   - 如有违规，dimension_2（字数达标）必须扣到3分以下
+   - **如有违规，compliance.entities_compliant = false，且 weighted_total 直接扣到5分以下**
 
 9. **时代错误检测（权重0%，但影响评分）**
    - 检查是否有超越设定年代的术语或品牌
    - {SETTING_YEAR}年背景不能出现：抖音、拼多多、微信、APP、智能手机、等保三级认证、ICP许可证、德勤审计等
-   - 如有违规，dimension_2（字数达标）必须扣到3分以下
+   - **如有违规，compliance.entities_compliant = false，且 weighted_total 直接扣到5分以下**
 
 ### 输出格式（严格遵守JSON，不要输出其他内容）
 
@@ -81,6 +84,10 @@
     "dimension_5": "简要说明",
     "dimension_6": "简要说明",
     "dimension_7": "简要说明"
+  },
+  "compliance": {
+    "entities_compliant": true/false,
+    "era_errors": ["具体错误1", "具体错误2"]
   }
 }
 ```
@@ -89,3 +96,5 @@
 - weighted_total >= {EVAL_THRESHOLD} → pass: true
 - weighted_total < {EVAL_THRESHOLD} → pass: false
 - 如果字数 < {MIN_WORDS}，dimension_2 必须 <= 3分
+- **现实实体名违规**：如有使用真实地名/公司名/媒体名/大学名，compliance.entities_compliant = false，且 weighted_total 直接扣到5分以下
+- **时代错误违规**：如有超越设定年代的术语或品牌，compliance.entities_compliant = false，且 weighted_total 直接扣到5分以下

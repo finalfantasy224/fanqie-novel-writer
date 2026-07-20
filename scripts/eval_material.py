@@ -67,7 +67,7 @@ def main():
 
     config = load_config(config_path)
     threshold = int(config.get("EVAL_THRESHOLD", "7"))
-    min_words = 2000
+    min_words = int(config.get("MIN_WORDS", "2000"))
 
     # 确定章节号
     if chapter_num == 0:
